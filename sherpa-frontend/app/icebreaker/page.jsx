@@ -78,7 +78,7 @@ export default function IcebreakerPage() {
       fd.append("role", form.role || "");
       fd.append("company", form.company || "");
       fd.append("linkedinBio", form.linkedinBio || "");
-      if (form.deckText) fd.append("deck_text", form.deckText);
+      if (form.deckText) fd.append("deckText", form.deckText);
       if (isPdf && form.file) fd.append("pitchDeck", form.file, form.file.name);
 
       const res = await fetch(url, { method: "POST", body: fd });
