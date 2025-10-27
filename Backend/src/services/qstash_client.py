@@ -112,6 +112,10 @@ async def verify_qstash_request(request: Request) -> None:
     - Requires env var QSTASH_CURRENT_SIGNING_KEY (and optional QSTASH_NEXT_SIGNING_KEY).
     - If Receiver or keys are not present, this becomes a no-op for convenience during local dev.
     """
+    # Allow explicit opt-out via env (useful for debugging behind proxies)
+    if str(os.getenv("QSTASH_VERIFY", "true")).lower() in ("0", "false", "no"):
+        return
+
     if _Receiver is None:
         # SDK Receiver not available; skip verification (acceptable for local/dev)
         return
@@ -140,16 +144,47 @@ async def verify_qstash_request(request: Request) -> None:
     if not signature:
         raise HTTPException(status_code=401, detail="Missing Upstash-Signature header")
 
-    body = await request.body()
-    url = str(request.url)
+    body_bytes = await request.body()
+    # Some SDK variants expect str and call .encode() internally; others accept bytes.
+    # Prepare both representations and try both to avoid AttributeError.
+    try:
+        body_text = body_bytes.decode("utf-8") if isinstance(body_bytes, (bytes, bytearray)) else str(body_bytes)
+    except Exception:
+        body_text = ""
+
+    # Reconstruct original public URL if behind a proxy (for signature verification)
+    # Prefer forwarded headers if present; otherwise fall back to request.url
+    try:
+        xf_proto = request.headers.get("x-forwarded-proto")
+        xf_host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+        xf_port = request.headers.get("x-forwarded-port")
+        path_qs = request.url.path
+        if request.url.query:
+            path_qs += f"?{request.url.query}"
+        if xf_proto and xf_host:
+            if xf_port and xf_port not in ("80", "443") and ":" not in xf_host:
+                host = f"{xf_host}:{xf_port}"
+            else:
+                host = xf_host
+            url = f"{xf_proto}://{host}{path_qs}"
+        else:
+            url = str(request.url)
+    except Exception:
+        url = str(request.url)
 
     # Verify may throw on failure; let it propagate as 401
     try:
-        # Common signature: verify(signature=..., body=..., url=...)
-        receiver.verify(signature=signature, body=body, url=url)  # type: ignore[attr-defined]
+        # Prefer keyword form; first try bytes, then fall back to text
+        try:
+            receiver.verify(signature=signature, body=body_bytes, url=url)  # type: ignore[attr-defined]
+        except Exception:
+            receiver.verify(signature=signature, body=body_text, url=url)  # type: ignore[attr-defined]
     except TypeError:
-        # Some variants may expect bytes and path only
-        receiver.verify(signature, body)  # type: ignore[misc]
+        # Positional fallback: some variants may expect (signature, body)
+        try:
+            receiver.verify(signature, body_bytes)  # type: ignore[misc]
+        except Exception:
+            receiver.verify(signature, body_text)  # type: ignore[misc]
 
 
 def normalize_base_url(value: Optional[str]) -> str:
