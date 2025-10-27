@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
 from pydantic import BaseModel
 import os
+import json
 import uuid
 from src.services.supabase_logger import log_interaction, fetch_interactions, delete_interaction_by_id
 from src.services.tasks import process_transcript as process_transcript_task
@@ -73,14 +74,22 @@ async def process_transcript_callback(request: Request, background_tasks: Backgr
         # Verify the request is from QStash (no-op in local/dev if not configured)
         await verify_qstash_request(request)
 
-        # Get the body
-        body = await request.json()
+        # Get the body robustly (avoid JSON parsing failures causing 500)
+        raw = await request.body()
+        try:
+            body = json.loads(raw.decode("utf-8") if isinstance(raw, (bytes, bytearray)) else raw)
+        except Exception:
+            # Fallback: pass empty payload; task tolerates partials
+            body = {}
 
         # Process in background so QStash gets immediate response
         background_tasks.add_task(process_transcript_task, body)
         
         return {"status": "processing"}
+    except HTTPException:
+        # bubble up known HTTP errors (e.g., signature verification)
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Callback failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Callback failed: {e.__class__.__name__}: {str(e)}")
 
 

@@ -4,6 +4,7 @@ import openai
 from io import BytesIO
 from typing import List, Any
 import re
+import json
 from src.services.supabase_logger import (
     log_interaction,
     fetch_interactions,
@@ -269,14 +270,20 @@ async def process_icebreaker_callback(request: Request, background_tasks: Backgr
     try:
         # Verify request (no-op in local/dev if not configured)
         await verify_qstash_request(request)
-        # Get the body
-        body = await request.json()
+        # Get the body robustly
+        raw = await request.body()
+        try:
+            body = json.loads(raw.decode("utf-8") if isinstance(raw, (bytes, bytearray)) else raw)
+        except Exception:
+            body = {}
         
         # Process in background so QStash gets immediate response
         background_tasks.add_task(process_icebreaker_task, body)
         
         return {"status": "processing"}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Callback failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Callback failed: {e.__class__.__name__}: {str(e)}")
 
 
