@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Input from "@/components/ui/input";
 import Label from "@/components/ui/label";
 import Textarea from "@/components/ui/textarea";
@@ -8,12 +8,41 @@ import Separator from "@/components/ui/separator";
 import Feed from "@/components/feed";
 import Dialog from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
+import { ShimmerCard } from "@/components/ui/shimmer";
+import { BACKEND_URL } from "@/lib/config";
 
 async function listFeed() {
   const res = await fetch(`${BACKEND_URL}/api/v1/transcripts?limit=20&offset=0`, { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to load feed");
   const data = await res.json();
   return Array.isArray(data) ? data : data.items || [];
+}
+
+async function pollFeedForNewItem(baselineTopId, matchFn, onComplete, onError) {
+  const maxAttempts = 60; // up to 60 seconds
+  let attempts = 0;
+  const tick = async () => {
+    try {
+      const items = await listFeed();
+      const topId = items?.[0]?.id;
+      const matched = items.find((it) => {
+        try { return matchFn?.(it) === true; } catch { return false; }
+      });
+      if ((baselineTopId && topId && topId !== baselineTopId) || matched) {
+        onComplete(items);
+        return;
+      }
+      attempts++;
+      if (attempts >= maxAttempts) {
+        onError(new Error("Timed out waiting for result"));
+        return;
+      }
+      setTimeout(tick, 1000);
+    } catch (e) {
+      onError(e);
+    }
+  };
+  tick();
 }
 
 export default function TranscriptPage() {
@@ -30,7 +59,9 @@ export default function TranscriptPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [toDelete, setToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [showShimmer, setShowShimmer] = useState(false);
   const { addToast } = useToast();
+  const pollingRef = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -50,30 +81,62 @@ export default function TranscriptPage() {
 
   async function onSubmit(e) {
     e.preventDefault();
-    if (loading) return;
+    if (loading || pollingRef.current) return;
     setLoading(true);
+    setShowShimmer(true);
 
-    const url = "/api/analyze/transcript";
-    let entry = null;
     try {
-      const res = await fetch(url, {
+      // Capture baseline from current state to avoid an extra fetch
+      const baselineTopId = (items && items.length > 0) ? items[0]?.id : null;
+
+      // Create job
+      const res = await fetch(`${BACKEND_URL}/api/v1/transcripts/jobs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
+      
+      if (!res.ok) {
+        throw new Error("Failed to create job");
+      }
+      
       const data = await res.json();
-      entry = data; // { type, result, input, id? }
+      pollingRef.current = true;
+
+      // Define a matcher using submitted input fields
+      const matcher = (it) => {
+        const inp = it?.input || {};
+        const sameCompany = (inp.company || "").trim() === (form.company || "").trim();
+        const sameName = (inp.name || "").trim() === (form.name || "").trim();
+        const sameDate = (inp.date || "").trim() === (form.date || "").trim();
+        return sameCompany && sameName && sameDate;
+      };
+
+      await pollFeedForNewItem(
+        baselineTopId,
+        matcher,
+        async (newItems) => {
+          pollingRef.current = false;
+          setShowShimmer(false);
+          setLoading(false);
+          setItems(newItems);
+          addToast({ title: "Transcript analyzed successfully!", variant: "success" });
+          setForm({ name: "", attendees: "", date: "", company: "", transcript: "" });
+        },
+        (err) => {
+          pollingRef.current = false;
+          setShowShimmer(false);
+          setLoading(false);
+          addToast({ title: "Job pending", description: "Result may appear shortly.", variant: "warning" });
+        }
+      );
     } catch (err) {
       console.error(err);
+      pollingRef.current = false;
+      setShowShimmer(false);
+      setLoading(false);
+      addToast({ title: "Failed to submit. Please try again.", variant: "error" });
     }
-    // Re-fetch list from DB after new item is created
-    try {
-      const list = await listFeed();
-      setItems(list);
-      addToast({ title: "Transcript created", variant: "success" });
-    } catch {}
-    setForm({ name: "", attendees: "", date: "", company: "", transcript: "" });
-    setLoading(false);
   }
 
   return (
@@ -150,6 +213,14 @@ export default function TranscriptPage() {
 
       <Separator />
       <h2 className="mb-3 text-lg font-medium">Feed</h2>
+      
+      {/* Show shimmer card while job is processing */}
+      {showShimmer && (
+        <div className="mb-4">
+          <ShimmerCard />
+        </div>
+      )}
+      
       <Feed
         items={items}
         type="transcript"
@@ -203,4 +274,3 @@ export default function TranscriptPage() {
     </main>
   );
 }
-import { BACKEND_URL } from "@/lib/config";

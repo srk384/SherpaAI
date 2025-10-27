@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request, BackgroundTasks
 import os
 import openai
 from io import BytesIO
@@ -9,64 +9,24 @@ from src.services.supabase_logger import (
     fetch_interactions,
     delete_interaction_by_id,
 )
+from src.services.tasks import process_icebreaker as process_icebreaker_task
 from pypdf import PdfReader
+from src.services.qstash_client import (
+    get_qstash_client,
+    qstash_publish_json,
+    verify_qstash_request,
+    build_callback_url,
+    is_loopback_or_private,
+)
+import uuid
 
 icebreaker_router = APIRouter()
 
-
-# -----------------generate icebreaker form text----------------
-@icebreaker_router.post("/generate-icebreaker")
-async def generate_icebreaker(linkedinBio: str = Form(...), deckText: str = Form(...)):
-
-    prompt = (
-        "Using the following information, craft a personalized outreach icebreaker message."
-        "\nAnalyze the LinkedIn bio to understand the person's role, tone, interests, and goals."
-        "\nUse the sales deck to align the value proposition with their likely priorities or pain points."
-        "\nInclude:"
-        "\n- One personalized hook (based on something specific from their LinkedIn or company)."
-        "\n- One insight or observation linking their background to what the deck offers."
-        "\n- A natural transition line that sets up the conversation, without sounding salesy."
-        "\nEnd with a friendly question or soft CTA that encourages a reply."
-        "\n\nBe creative but authentic — sound like a human who did their homework."
-        "\n\nInputs:"
-        f"\nLinkedIn About Section:\n{linkedinBio}"
-        f"\n\nSales Deck Summary:\n{deckText}"
-    )
-
-    client = openai.OpenAI(
+def _groq_client():
+    return openai.OpenAI(
         base_url="https://api.groq.com/openai/v1",
         api_key=os.getenv("GROQ_API_KEY"),
     )
-    chat_completion = client.chat.completions.create(
-        messages=[
-            {"role": "system", "content": "You are an expert meeting coach."},
-            {"role": "user", "content": prompt},
-        ],
-        model=os.getenv("GROQ_MODEL", "allam-2-7b"),
-        temperature=0.3,
-    )
-
-    content = _extract_choice_content(chat_completion)
-    # Clean formatting and placeholders
-    content = re.sub(r"\s+", " ", content).strip()
-    content = re.sub(r"^(dear|hi|hello)\b[^,]*,?\s*", "", content, flags=re.IGNORECASE)
-    content = re.sub(r"\[[^\]]+\]", "", content)
-    response = {"type": "Icebreaker", "result": content}
-
-    # log to Supabase
-    try:
-        input_payload = {"linkedinBio": linkedinBio, "deckText": deckText}
-
-        await log_interaction(
-            route="/api/v1/generate-icebreaker",
-            input_payload=input_payload,
-            output_payload=response,
-            model=os.getenv("GROQ_MODEL"),
-        )
-    except Exception:
-        pass
-
-    return response
 
 
 # --- Helpers for PDF ingestion ---
@@ -168,11 +128,8 @@ async def generate_icebreaker_from_pdf(
     pdf_bytes = await pitchDeck.read()
     extracted_text = _extract_pdf_text(pdf_bytes)
 
-    client = openai.OpenAI(
-        base_url="https://api.groq.com/openai/v1",
-        api_key=os.getenv("GROQ_API_KEY"),
-    )
-    deck_summary = _summarize_deck_with_groq(client, extracted_text)
+ 
+    deck_summary = _summarize_deck_with_groq(_groq_client(), extracted_text)
     # Reuse the existing icebreaker prompt flow using linkedinBio + deck_summary
     prompt = (
         "Using the following information, craft a personalized outreach icebreaker message."
@@ -189,7 +146,7 @@ async def generate_icebreaker_from_pdf(
         f"\n\nSales Deck Summary (auto-generated):\n{deck_summary}"
     )
 
-    chat_completion = client.chat.completions.create(
+    chat_completion = _groq_client().chat.completions.create(
         messages=[
             {"role": "system", "content": "You are an expert sales copywriter."},
             {"role": "user", "content": prompt},
@@ -278,3 +235,48 @@ async def delete_icebreaker(id: str):
     if deleted <= 0:
         raise HTTPException(status_code=404, detail="Icebreaker not found")
     return {"deleted": deleted, "id": id}
+
+
+@icebreaker_router.post("/icebreakers/jobs")
+async def enqueue_icebreaker_job(
+    background_tasks: BackgroundTasks,
+    linkedinBio: str = Form(...),
+    deckText: str = Form(...),
+):
+    """Enqueue icebreaker processing job to QStash."""
+    try:
+        # Build the callback URL safely (adds scheme, strips trailing slashes)
+        callback_endpoint = build_callback_url("/api/v1/icebreakers/callback")
+
+        payload = {"linkedinBio": linkedinBio, "deckText": deckText}
+
+        # If callback is loopback/private (local dev), bypass QStash and run locally
+        if is_loopback_or_private(callback_endpoint):
+            background_tasks.add_task(process_icebreaker_task, payload)
+            return {"job_id": f"local-{uuid.uuid4().hex}", "status": "queued", "mode": "local"}
+
+        client = get_qstash_client()
+        # Publish message to QStash
+        response = qstash_publish_json(client, url=callback_endpoint, body=payload)
+        return {"job_id": response.get("messageId"), "status": "queued", "mode": "qstash"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to enqueue job: {str(e)}")
+
+
+@icebreaker_router.post("/icebreakers/callback")
+async def process_icebreaker_callback(request: Request, background_tasks: BackgroundTasks):
+    """Callback endpoint that QStash calls to process the job."""
+    try:
+        # Verify request (no-op in local/dev if not configured)
+        await verify_qstash_request(request)
+        # Get the body
+        body = await request.json()
+        
+        # Process in background so QStash gets immediate response
+        background_tasks.add_task(process_icebreaker_task, body)
+        
+        return {"status": "processing"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Callback failed: {str(e)}")
+
+

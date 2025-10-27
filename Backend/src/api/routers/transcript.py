@@ -1,8 +1,16 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
 from pydantic import BaseModel
 import os
-import openai
+import uuid
 from src.services.supabase_logger import log_interaction, fetch_interactions, delete_interaction_by_id
+from src.services.tasks import process_transcript as process_transcript_task
+from src.services.qstash_client import (
+    get_qstash_client,
+    qstash_publish_json,
+    verify_qstash_request,
+    build_callback_url,
+    is_loopback_or_private,
+)
 
 transcript_router = APIRouter()
 
@@ -13,63 +21,6 @@ class TranscriptRequest(BaseModel):
     attendees: str
     date: str
     transcript: str
-
-
-@transcript_router.post("/analyze-transcript")
-async def analyze_transcript(data: TranscriptRequest):
-    # Normalize inputs and be tolerant of partial payloads to avoid 422s
-    company = (data.company or "").strip()
-    # attendees may come as a string or list; normalize to a readable string
-    if isinstance(data.attendees, list):
-        attendees_str = ", ".join([str(a) for a in data.attendees])
-    else:
-        attendees_str = (data.attendees or "").strip()
-    date_str = (data.date or "").strip()
-    transcript_text = (data.transcript or "").strip()
-
-    prompt = (
-        "Review the following meeting transcript and provide:"
-        "\n- What went well"
-        "\n- What could be improved"
-        "\n- Actionable recommendations for next time"
-        "\nBe concise, specific, and reference quotes when appropriate.\n\n"
-        f"Company: {company}\nAttendees: {attendees_str}\nDate: {date_str}\n\n"
-        f"Transcript:\n{transcript_text}"
-    )
-    client = openai.OpenAI(
-        base_url="https://api.groq.com/openai/v1",
-        api_key=os.getenv("GROQ_API_KEY"),
-    )
-    chat_completion = client.chat.completions.create(
-        messages=[
-            {"role": "system", "content": "You are an expert meeting coach."},
-            {"role": "user", "content": prompt},
-        ],
-        model=os.getenv("GROQ_MODEL", "allam-2-7b"),
-        temperature=0.3,
-    )
-    content = chat_completion.choices[0].message.content
-    response = {"type": "transcript", "result": content}
-
-    # Best-effort async log to Supabase; do not block on failures
-    try:
-        input_payload = (
-            data.model_dump() if hasattr(data, "model_dump") else data.dict()
-        )
-        await log_interaction(
-            route="/api/v1/analyze-transcript",
-            input_payload=input_payload,
-            output_payload=response,
-            model=os.getenv("GROQ_MODEL"),
-            extra={
-                "company": input_payload.get("company"),
-                "name": input_payload.get("name"),
-            },
-        )
-    except Exception:
-        pass
-
-    return {"type": "transcript", "result": content, "input": data}
 
 
 @transcript_router.get("/transcripts")
@@ -91,3 +42,45 @@ async def delete_transcript(id: str):
     if deleted <= 0:
         raise HTTPException(status_code=404, detail="Transcript not found")
     return {"deleted": deleted, "id": id}
+
+
+# ------------------QStash Queue------------------------
+
+@transcript_router.post("/transcripts/jobs")
+async def enqueue_transcript_job(data: TranscriptRequest, background_tasks: BackgroundTasks):
+    """Enqueue transcript processing job to QStash."""
+    try:
+        callback_endpoint = build_callback_url("/api/v1/transcripts/callback")
+
+        # If callback is loopback/private (local dev), bypass QStash and run locally
+        if is_loopback_or_private(callback_endpoint):
+            payload = data.model_dump() if hasattr(data, "model_dump") else data.dict()
+            background_tasks.add_task(process_transcript_task, payload)
+            return {"job_id": f"local-{uuid.uuid4().hex}", "status": "queued", "mode": "local"}
+
+        client = get_qstash_client()
+        # Publish message to QStash
+        response = qstash_publish_json(client, url=callback_endpoint, body=data.model_dump())
+        return {"job_id": response.get("messageId"), "status": "queued", "mode": "qstash"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to enqueue job: {str(e)}")
+
+
+@transcript_router.post("/transcripts/callback")
+async def process_transcript_callback(request: Request, background_tasks: BackgroundTasks):
+    """Callback endpoint that QStash calls to process the job."""
+    try:
+        # Verify the request is from QStash (no-op in local/dev if not configured)
+        await verify_qstash_request(request)
+
+        # Get the body
+        body = await request.json()
+
+        # Process in background so QStash gets immediate response
+        background_tasks.add_task(process_transcript_task, body)
+        
+        return {"status": "processing"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Callback failed: {str(e)}")
+
+

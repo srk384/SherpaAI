@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Input from "@/components/ui/input";
 import Label from "@/components/ui/label";
 import Textarea from "@/components/ui/textarea";
@@ -9,6 +9,8 @@ import Feed from "@/components/feed";
 import UploadModal from "@/components/upload-modal";
 import Dialog from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
+import { ShimmerCard } from "@/components/ui/shimmer";
+import { BACKEND_URL } from "@/lib/config";
 
 async function listFeed() {
   const res = await fetch(
@@ -18,6 +20,33 @@ async function listFeed() {
   if (!res.ok) throw new Error("Failed to load feed");
   const data = await res.json();
   return Array.isArray(data) ? data : data.items || [];
+}
+
+async function pollFeedForNewItem(baselineTopId, matchFn, onComplete, onError) {
+  const maxAttempts = 60; // up to 60 seconds
+  let attempts = 0;
+  const tick = async () => {
+    try {
+      const items = await listFeed();
+      const topId = items?.[0]?.id;
+      const matched = items.find((it) => {
+        try { return matchFn?.(it) === true; } catch { return false; }
+      });
+      if ((baselineTopId && topId && topId !== baselineTopId) || matched) {
+        onComplete(items);
+        return;
+      }
+      attempts++;
+      if (attempts >= maxAttempts) {
+        onError(new Error("Timed out waiting for result"));
+        return;
+      }
+      setTimeout(tick, 1000);
+    } catch (e) {
+      onError(e);
+    }
+  };
+  tick();
 }
 
 export default function IcebreakerPage() {
@@ -37,7 +66,9 @@ export default function IcebreakerPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [toDelete, setToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [showShimmer, setShowShimmer] = useState(false);
   const { addToast } = useToast();
+  const pollingRef = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -66,15 +97,16 @@ export default function IcebreakerPage() {
 
   async function onSubmit(e) {
     e.preventDefault();
-    if (loading) return;
+    if (loading || pollingRef.current) return;
     setLoading(true);
+    setShowShimmer(true);
 
     try {
-      const isPdf = !!(form.file && (form.file.type?.includes("pdf") || /\.pdf$/i.test(form.file.name)));
-      const url = isPdf
-        ? `${BACKEND_URL}/api/v1/generate-icebreaker-from-pdf`
-        : `${BACKEND_URL}/api/v1/generate-icebreaker`;
+      // Capture baseline from current state to avoid an extra fetch
+      const baselineTopId = (items && items.length > 0) ? items[0]?.id : null;
 
+      const isPdf = !!(form.file && (form.file.type?.includes("pdf") || /\.pdf$/i.test(form.file.name)));
+      
       const fd = new FormData();
       fd.append("person", form.person || "");
       fd.append("role", form.role || "");
@@ -83,20 +115,69 @@ export default function IcebreakerPage() {
       if (form.deckText) fd.append("deckText", form.deckText);
       if (isPdf && form.file) fd.append("pitchDeck", form.file, form.file.name);
 
-      const res = await fetch(url, { method: "POST", body: fd });
-      await res.json().catch(() => null);
+      if (isPdf) {
+        // PDF: Use old synchronous endpoint
+        const url = `${BACKEND_URL}/api/v1/generate-icebreaker-from-pdf`;
+        const res = await fetch(url, { method: "POST", body: fd });
+        
+        if (!res.ok) {
+          throw new Error("Failed to generate icebreaker from PDF");
+        }
+        
+        await res.json();
+        
+        // Refresh feed
+        const list = await listFeed();
+        setItems(list);
+        setShowShimmer(false);
+        setLoading(false);
+        addToast({ title: "Icebreaker created successfully!", variant: "success" });
+        setForm({ person: "", role: "", company: "", linkedinBio: "", deckText: "", pitchDeck: "", file: null });
+      } else {
+        // Non-PDF: Use new job-based endpoint
+        const url = `${BACKEND_URL}/api/v1/icebreakers/jobs`;
+        const res = await fetch(url, { method: "POST", body: fd });
+        
+        if (!res.ok) {
+          throw new Error("Failed to create job");
+        }
+        
+        pollingRef.current = true;
+
+        // Poll for feed change or matching item
+        const matcher = (it) => {
+          const inp = it?.input || {};
+          const sameBio = (inp.linkedinBio || "").trim() === (form.linkedinBio || "").trim();
+          const sameDeck = (inp.deckText || "").trim() === (form.deckText || "").trim();
+          return sameBio && sameDeck;
+        };
+
+        await pollFeedForNewItem(
+          baselineTopId,
+          matcher,
+          async (newItems) => {
+            pollingRef.current = false;
+            setShowShimmer(false);
+            setLoading(false);
+            setItems(newItems);
+            addToast({ title: "Icebreaker created successfully!", variant: "success" });
+            setForm({ person: "", role: "", company: "", linkedinBio: "", deckText: "", pitchDeck: "", file: null });
+          },
+          (err) => {
+            pollingRef.current = false;
+            setShowShimmer(false);
+            setLoading(false);
+            addToast({ title: "Job pending", description: "Result may appear shortly.", variant: "warning" });
+          }
+        );
+      }
     } catch (err) {
       console.error(err);
+      pollingRef.current = false;
+      setShowShimmer(false);
+      setLoading(false);
+      addToast({ title: "Failed to submit. Please try again.", variant: "error" });
     }
-
-    // After creation, refresh feed from DB
-    try {
-      const list = await listFeed();
-      setItems(list);
-      addToast({ title: "Icebreaker created", variant: "success" });
-    } catch {}
-    setForm({ person: "", role: "", company: "", linkedinBio: "", deckText: "", pitchDeck: "", file: null });
-    setLoading(false);
   }
 
   return (
@@ -171,7 +252,6 @@ export default function IcebreakerPage() {
             value={form.deckText}
             onChange={onChange}
             placeholder="Paste deck content here or use Upload above..."
-            required
           />
           {form.deckSource ? (
             <p className="mt-1 text-xs text-zinc-500">
@@ -188,6 +268,14 @@ export default function IcebreakerPage() {
 
       <Separator />
       <h2 className="mb-3 text-lg font-medium">Feed</h2>
+      
+      {/* Show shimmer card while job is processing */}
+      {showShimmer && (
+        <div className="mb-4">
+          <ShimmerCard />
+        </div>
+      )}
+      
       <Feed
         items={items}
         type="icebreaker"
@@ -253,4 +341,3 @@ export default function IcebreakerPage() {
     </main>
   );
 }
-import { BACKEND_URL } from "@/lib/config";
