@@ -1,5 +1,6 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { ToastProvider } from "@/components/ui/toast";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,7 +21,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <header className="sticky top-0 z-10 border-b border-zinc-200 bg-white/70 backdrop-blur supports-backdrop-filter:bg-white/60 dark:border-zinc-800 dark:bg-zinc-950/70">
+        <header className="sticky top-0 z-100 border-b border-zinc-200 bg-white/70 backdrop-blur supports-backdrop-filter:bg-white/60 dark:border-zinc-800 dark:bg-zinc-950/70">
           <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
             <a href="/" className="font-medium">SherpaAI</a>
             <nav className="flex items-center gap-4 text-sm">
@@ -29,7 +30,9 @@ export default function RootLayout({ children }) {
             </nav>
           </div>
         </header>
-        {children}
+        <ToastProvider>
+          {children}
+        </ToastProvider>
       </body>
     </html>
   );

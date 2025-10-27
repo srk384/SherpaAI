@@ -8,6 +8,7 @@ import Separator from "@/components/ui/separator";
 import Feed from "@/components/feed";
 import UploadModal from "@/components/upload-modal";
 import Dialog from "@/components/ui/dialog";
+import { useToast } from "@/components/ui/toast";
 
 async function listFeed() {
   const res = await fetch(
@@ -36,6 +37,7 @@ export default function IcebreakerPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [toDelete, setToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const { addToast } = useToast();
 
   useEffect(() => {
     (async () => {
@@ -78,7 +80,7 @@ export default function IcebreakerPage() {
       fd.append("role", form.role || "");
       fd.append("company", form.company || "");
       fd.append("linkedinBio", form.linkedinBio || "");
-      if (form.deckText) fd.append("deck_text", form.deckText);
+      if (form.deckText) fd.append("deckText", form.deckText);
       if (isPdf && form.file) fd.append("pitchDeck", form.file, form.file.name);
 
       const res = await fetch(url, { method: "POST", body: fd });
@@ -91,6 +93,7 @@ export default function IcebreakerPage() {
     try {
       const list = await listFeed();
       setItems(list);
+      addToast({ title: "Icebreaker created", variant: "success" });
     } catch {}
     setForm({ person: "", role: "", company: "", linkedinBio: "", deckText: "", pitchDeck: "", file: null });
     setLoading(false);
@@ -114,6 +117,7 @@ export default function IcebreakerPage() {
               value={form.person}
               onChange={onChange}
               placeholder="e.g., Priya Sharma"
+              required
             />
           </div>
           <div>
@@ -124,6 +128,7 @@ export default function IcebreakerPage() {
               value={form.role}
               onChange={onChange}
               placeholder="e.g., Head of Sales"
+              required
             />
           </div>
           <div>
@@ -134,6 +139,7 @@ export default function IcebreakerPage() {
               value={form.company}
               onChange={onChange}
               placeholder="e.g., Acme Inc."
+              required
             />
           </div>
         </div>
@@ -145,6 +151,7 @@ export default function IcebreakerPage() {
             value={form.linkedinBio}
             onChange={onChange}
             placeholder="Paste LinkedIn bio or company details..."
+            required
           />
         </div>
         <div>
@@ -164,6 +171,7 @@ export default function IcebreakerPage() {
             value={form.deckText}
             onChange={onChange}
             placeholder="Paste deck content here or use Upload above..."
+            required
           />
           {form.deckSource ? (
             <p className="mt-1 text-xs text-zinc-500">
@@ -224,6 +232,7 @@ export default function IcebreakerPage() {
                 setItems(list);
                 setConfirmOpen(false);
                 setToDelete(null);
+                addToast({ title: "Icebreaker deleted", variant: "success" });
               } catch (e) {
                 console.error(e);
               } finally {

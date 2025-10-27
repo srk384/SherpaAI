@@ -38,6 +38,128 @@ export default function FeedItem({ item, type, onDelete, onOpen }) {
   const deckSource = item?.deckSource || input?.deckSource;
   const resultText = toResultText(item);
 
+  function renderIcebreaker(text) {
+    if (!text) return null;
+    const parts = String(text).split(/This message includes:/i);
+    const header = parts[0] || "";
+    const quoteMatch = header.match(/"([\s\S]*?)"/);
+    const mainMessage = quoteMatch ? quoteMatch[1] : header.trim();
+
+    const bulletsRaw = parts[1] || "";
+    const items = bulletsRaw
+      .split(/\s*\d+\.\s+/g)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const bullets = items.map((s) => {
+      const titleMatch = s.match(/\*\*(.+?)\*\*/);
+      const title = titleMatch ? titleMatch[1] : s.split(":")[0];
+      const rest = titleMatch ? s.replace(titleMatch[0], "").replace(/^:\s*/, "").trim() : s.replace(/^.*?:\s*/, "").trim();
+      return { title, rest };
+    });
+
+    return (
+      <div className="space-y-2">
+        {mainMessage ? (
+          <div>
+            <p className="text-sm font-medium">Icebreaker</p>
+            <p className="text-sm text-zinc-800 dark:text-zinc-200">{mainMessage}</p>
+          </div>
+        ) : null}
+        {bullets.length ? (
+          <div>
+            <p className="text-sm font-medium">This message includes</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-zinc-700 dark:text-zinc-300">
+              {bullets.map((b, i) => (
+                <li key={i}>
+                  <span className="font-medium">{b.title}:</span> {b.rest}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  function renderMarkdownInline(str) {
+    const parts = String(str).split(/(\*\*.+?\*\*)/g);
+    return parts.map((part, i) => {
+      const m = part.match(/^\*\*(.+)\*\*$/);
+      if (m) return <strong key={i}>{m[1]}</strong>;
+      return <span key={i}>{part}</span>;
+    });
+  }
+
+  function splitTranscriptSections(text) {
+    const src = String(text || "");
+    const re = /(\*\*\s*)?(What\s+went\s+well|What\s+could\s+be\s+improved|Actionable\s+recommendations\s+for\s+next\s+time)(:\s*)?(\*\*)?/gi;
+    const sections = [];
+    let match;
+    let lastIndex = 0;
+    const order = [];
+    while ((match = re.exec(src)) !== null) {
+      const title = match[2];
+      const start = match.index + match[0].length;
+      const prev = sections.length ? sections[sections.length - 1] : null;
+      if (prev) {
+        prev.content = src.slice(prev.start, match.index).trim();
+      }
+      sections.push({ title, start, content: "" });
+      order.push(title.toLowerCase());
+      lastIndex = start;
+    }
+    if (sections.length) {
+      sections[sections.length - 1].content = src.slice(sections[sections.length - 1].start).trim();
+    }
+    return sections;
+  }
+
+  function renderTranscript(text) {
+    const sections = splitTranscriptSections(text);
+    if (!sections.length) {
+      return <pre className="whitespace-pre-wrap text-sm text-zinc-800 dark:text-zinc-200">{text}</pre>;
+    }
+
+    function renderBlock(title, content) {
+      const lines = String(content)
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      const bulletLines = lines.filter((l) => /^[-\u2022]\s+/.test(l));
+      const orderedLines = lines.filter((l) => /^\d+\.\s+/.test(l));
+      const hasBullets = bulletLines.length > 0;
+      const hasOrdered = orderedLines.length > 0 && !hasBullets;
+
+      return (
+        <div className="space-y-1" key={title}>
+          <p className="text-sm font-medium">{title}</p>
+          {hasBullets ? (
+            <ul className="ml-5 list-disc space-y-1 text-sm text-zinc-700 dark:text-zinc-300">
+              {bulletLines.map((l, i) => (
+                <li key={i}>{renderMarkdownInline(l.replace(/^[-\u2022]\s+/, ""))}</li>
+              ))}
+            </ul>
+          ) : hasOrdered ? (
+            <ol className="ml-5 list-decimal space-y-1 text-sm text-zinc-700 dark:text-zinc-300">
+              {orderedLines.map((l, i) => (
+                <li key={i}>{renderMarkdownInline(l.replace(/^\d+\.\s+/, ""))}</li>
+              ))}
+            </ol>
+          ) : (
+            <p className="text-sm text-zinc-700 dark:text-zinc-300">{renderMarkdownInline(lines.join(" "))}</p>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        {sections.map((s, idx) => renderBlock(s.title.replace(/\*\*/g, "").replace(/\s*:\s*$/, ""), s.content))}
+      </div>
+    );
+  }
+
   return (
     <div className="group relative">
       <button
@@ -67,7 +189,9 @@ export default function FeedItem({ item, type, onDelete, onOpen }) {
           {deckSource && t !== "transcript" ? (
             <p className="mb-2 text-xs text-zinc-500">Deck Source: {deckSource}</p>
           ) : null}
-          <pre className="whitespace-pre-wrap text-sm text-zinc-800 dark:text-zinc-200">{resultText}</pre>
+          {t === "icebreaker"
+            ? renderIcebreaker(item?.output?.result || resultText)
+            : renderTranscript(item?.output?.result || resultText)}
         </CardContent>
       </Card>
     </div>

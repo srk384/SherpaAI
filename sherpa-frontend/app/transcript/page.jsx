@@ -7,6 +7,7 @@ import Button from "@/components/ui/button";
 import Separator from "@/components/ui/separator";
 import Feed from "@/components/feed";
 import Dialog from "@/components/ui/dialog";
+import { useToast } from "@/components/ui/toast";
 
 async function listFeed() {
   const res = await fetch(`${BACKEND_URL}/api/v1/transcripts?limit=20&offset=0`, { cache: "no-store" });
@@ -29,6 +30,7 @@ export default function TranscriptPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [toDelete, setToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const { addToast } = useToast();
 
   useEffect(() => {
     (async () => {
@@ -68,6 +70,7 @@ export default function TranscriptPage() {
     try {
       const list = await listFeed();
       setItems(list);
+      addToast({ title: "Transcript created", variant: "success" });
     } catch {}
     setForm({ name: "", attendees: "", date: "", company: "", transcript: "" });
     setLoading(false);
@@ -185,6 +188,7 @@ export default function TranscriptPage() {
                 setItems(list);
                 setConfirmOpen(false);
                 setToDelete(null);
+                addToast({ title: "Transcript deleted", variant: "success" });
               } catch (e) {
                 console.error(e);
               } finally {
