@@ -16,27 +16,57 @@ icebreaker_router = APIRouter()
 
 # -----------------generate icebreaker form text----------------
 @icebreaker_router.post("/generate-icebreaker")
-async def generate_icebreaker(linkedinBio: str = Form(...), deckText: str = Form(...)):
+async def generate_icebreaker(linkedinBio: str = Form(...), deckText: str = Form(...),company: str = Form(...),deckText: str = Form(...)):
 
-    prompt = (
-        "Using the following information, craft a personalized outreach icebreaker message."
-        "\nAnalyze the LinkedIn bio to understand the person's role, tone, interests, and goals."
-        "\nUse the sales deck to align the value proposition with their likely priorities or pain points."
-        "\nInclude:"
-        "\n- One personalized hook (based on something specific from their LinkedIn or company)."
-        "\n- One insight or observation linking their background to what the deck offers."
-        "\n- A natural transition line that sets up the conversation, without sounding salesy."
-        "\nEnd with a friendly question or soft CTA that encourages a reply."
-        "\n\nBe creative but authentic — sound like a human who did their homework."
-        "\n\nInputs:"
-        f"\nLinkedIn About Section:\n{linkedinBio}"
-        f"\n\nSales Deck Summary:\n{deckText}"
-    )
+    # prompt = (
+    #     "Using the following information, craft a personalized outreach icebreaker message."
+    #     "\nAnalyze the LinkedIn bio to understand the person's role, tone, interests, and goals."
+    #     "\nUse the sales deck to align the value proposition with their likely priorities or pain points."
+    #     "\nInclude:"
+    #     "\n- One personalized hook (based on something specific from their LinkedIn or company)."
+    #     "\n- One insight or observation linking their background to what the deck offers."
+    #     "\n- A natural transition line that sets up the conversation, without sounding salesy."
+    #     "\nEnd with a friendly question or soft CTA that encourages a reply."
+    #     "\n\nBe creative but authentic — sound like a human who did their homework."
+    #     "\n\nInputs:"
+    #     f"\nLinkedIn About Section:\n{linkedinBio}"
+    #     f"\n\nSales Deck Summary:\n{deckText}"
+    # )
 
     client = openai.OpenAI(
         base_url="https://api.groq.com/openai/v1",
         api_key=os.getenv("GROQ_API_KEY"),
     )
+    # Override prompt as requested
+    prompt = (
+        "Paste a [LinkedIn -about section], give me the company LinkedIn, and website. "
+        "I will give you buying signals for [deck]: list them, why they matter, the source of information, "
+        "discovery triggers, and smart questions to ask in your next call. Do this at the level of [company] "
+        "and at the level of [role]. Also share the person's preferred style of buying and how you inferred that. "
+        "At the end give a short summary and ask me 3 reflection questions to prepare better for the meet. "
+        "Also give me the top 5 things the person would likely want from our deck, and what parts may not be clear, "
+        "relevant or valuable and why, plus what to do instead.\n\n"
+        "Use the inputs below. If company LinkedIn or website cannot be inferred, say so explicitly and suggest how to find it. "
+        "Keep answers concise, scannable, and actionable.\n\n"
+        f"LinkedIn About Section:\n{linkedinBio}\n\n"
+        f"Deck (text or summary):\n{deckText}"
+        f"company:\n{deckText}"
+        f"role:\n{deckText}"
+    )
+    # Override prompt as requested (PDF path)
+    # prompt = (
+    #     "Paste a [LinkedIn -about section], give me the company LinkedIn, and website. "
+    #     "I will give you buying signals for [deck]: list them, why they matter, the source of information, "
+    #     "discovery triggers, and smart questions to ask in your next call. Do this at the level of [company] "
+    #     "and at the level of [role]. Also share the person's preferred style of buying and how you inferred that. "
+    #     "At the end give a short summary and ask me 3 reflection questions to prepare better for the meet. "
+    #     "Also give me the top 5 things the person would likely want from our deck, and what parts may not be clear, "
+    #     "relevant or valuable and why, plus what to do instead.\n\n"
+    #     "Use the inputs below. If company LinkedIn or website cannot be inferred, say so explicitly and suggest how to find it. "
+    #     "Keep answers concise, scannable, and actionable.\n\n"
+    #     f"LinkedIn About Section:\n{linkedinBio}\n\n"
+    #     f"Deck (auto-generated summary):\n{deck_summary}"
+    # )
     chat_completion = client.chat.completions.create(
         messages=[
             {"role": "system", "content": "You are an expert meeting coach."},
@@ -187,6 +217,21 @@ async def generate_icebreaker_from_pdf(
         "\n\nInputs:"
         f"\nLinkedIn About Section:\n{linkedinBio}"
         f"\n\nSales Deck Summary (auto-generated):\n{deck_summary}"
+    )
+
+    # Override prompt as requested (PDF path)
+    prompt = (
+        "Paste a [LinkedIn -about section], give me the company LinkedIn, and website. "
+        "I will give you buying signals for [deck]: list them, why they matter, the source of information, "
+        "discovery triggers, and smart questions to ask in your next call. Do this at the level of [company] "
+        "and at the level of [role]. Also share the person's preferred style of buying and how you inferred that. "
+        "At the end give a short summary and ask me 3 reflection questions to prepare better for the meet. "
+        "Also give me the top 5 things the person would likely want from our deck, and what parts may not be clear, "
+        "relevant or valuable and why, plus what to do instead.\n\n"
+        "Use the inputs below. If company LinkedIn or website cannot be inferred, say so explicitly and suggest how to find it. "
+        "Keep answers concise, scannable, and actionable.\n\n"
+        f"LinkedIn About Section:\n{linkedinBio}\n\n"
+        f"Deck (auto-generated summary):\n{deck_summary}"
     )
 
     chat_completion = client.chat.completions.create(
