@@ -21,7 +21,7 @@ def _groq_client():
 
 async def process_transcript(payload: Dict[str, Any]) -> Dict[str, Any]:
     # Artificial delay to simulate heavy processing and test queue behavior
-    await asyncio.sleep(10)
+    await asyncio.sleep(60)
     name = (payload.get("name") or "").strip()
     company = (payload.get("company") or "").strip()
     attendees = payload.get("attendees")
