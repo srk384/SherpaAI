@@ -21,7 +21,7 @@ def _groq_client():
 
 async def process_transcript(payload: Dict[str, Any]) -> Dict[str, Any]:
     # Artificial delay to simulate heavy processing and test queue behavior
-    await asyncio.sleep(60)
+    await asyncio.sleep(10)
     name = (payload.get("name") or "").strip()
     company = (payload.get("company") or "").strip()
     attendees = payload.get("attendees")
@@ -48,13 +48,19 @@ async def process_transcript(payload: Dict[str, Any]) -> Dict[str, Any]:
     delay = 1.0
     for attempt in range(3):
         try:
-            completion = client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": "You are an expert meeting coach."},
-                    {"role": "user", "content": prompt},
-                ],
-                model=os.getenv("GROQ_MODEL", "allam-2-7b"),
-                temperature=0.3,
+            # Run blocking SDK call in a worker thread to avoid blocking the event loop
+            completion = await asyncio.wait_for(
+                asyncio.to_thread(
+                    lambda: client.chat.completions.create(
+                        messages=[
+                            {"role": "system", "content": "You are an expert meeting coach."},
+                            {"role": "user", "content": prompt},
+                        ],
+                        model=os.getenv("GROQ_MODEL", "allam-2-7b"),
+                        temperature=0.3,
+                    )
+                ),
+                timeout=120,
             )
             content = completion.choices[0].message.content
             result = {"type": "transcript", "result": content}
@@ -71,7 +77,11 @@ async def process_transcript(payload: Dict[str, Any]) -> Dict[str, Any]:
                     },
                     output_payload=result,
                     model=os.getenv("GROQ_MODEL"),
-                    extra={"company": company, "name": name},
+                    extra={
+                        "company": company,
+                        "name": name,
+                        "job_id": payload.get("job_id"),
+                    },
                 )
             except Exception:
                 pass
@@ -107,13 +117,18 @@ async def process_icebreaker(payload: Dict[str, Any]) -> Dict[str, Any]:
     delay = 1.0
     for attempt in range(3):
         try:
-            completion = client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": "You are an expert sales copywriter."},
-                    {"role": "user", "content": prompt},
-                ],
-                model=os.getenv("GROQ_MODEL", "allam-2-7b"),
-                temperature=0.3,
+            completion = await asyncio.wait_for(
+                asyncio.to_thread(
+                    lambda: client.chat.completions.create(
+                        messages=[
+                            {"role": "system", "content": "You are an expert sales copywriter."},
+                            {"role": "user", "content": prompt},
+                        ],
+                        model=os.getenv("GROQ_MODEL", "allam-2-7b"),
+                        temperature=0.3,
+                    )
+                ),
+                timeout=120,
             )
             content = _extract_choice_content(completion)
             # Clean formatting and placeholders
@@ -168,4 +183,3 @@ def _extract_choice_content(completion: Any) -> str:
         raise HTTPException(
             status_code=500, detail=f"Unexpected Groq response shape: {e}"
         )
-

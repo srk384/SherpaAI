@@ -26,3 +26,16 @@ async def process_transcript_callback(request: Request, background_tasks: Backgr
     return await tc.process_transcript_callback_controller(request, background_tasks)
 
 
+@transcript_router.get("/transcripts/jobs/{job_id}")
+async def get_transcript_job_status(job_id: str):
+    # Lightweight per-job status endpoint so the client can show results as they are ready
+    from src.services.job_store import job_store
+
+    data = await job_store.get(job_id)
+    if not data:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="Job not found")
+    return data
+
+
