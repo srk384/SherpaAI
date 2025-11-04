@@ -1,4 +1,5 @@
 import os
+import asyncio
 import json
 import uuid
 from fastapi import HTTPException, Request, BackgroundTasks
@@ -47,7 +48,8 @@ async def enqueue_transcript_job_controller(data: TranscriptRequest, background_
 
         if is_loopback_or_private(callback_endpoint):
             payload = data.model_dump() if hasattr(data, "model_dump") else data.dict()
-            background_tasks.add_task(process_transcript_task, payload)
+            # BackgroundTasks won't await async callables; schedule on the event loop
+            asyncio.create_task(process_transcript_task(payload))
             return {"job_id": f"local-{uuid.uuid4().hex}", "status": "queued", "mode": "local"}
 
         client = get_qstash_client()
@@ -67,11 +69,11 @@ async def process_transcript_callback_controller(request: Request, background_ta
         except Exception:
             body = {}
 
-        background_tasks.add_task(process_transcript_task, body)
+        # Schedule coroutine directly; BackgroundTasks may not run async callables
+        asyncio.create_task(process_transcript_task(body))
 
         return {"status": "processing"}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Callback failed: {e.__class__.__name__}: {str(e)}")
-

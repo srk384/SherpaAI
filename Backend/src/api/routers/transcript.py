@@ -25,4 +25,3 @@ async def enqueue_transcript_job(data: tc.TranscriptRequest, background_tasks: B
 async def process_transcript_callback(request: Request, background_tasks: BackgroundTasks):
     return await tc.process_transcript_callback_controller(request, background_tasks)
 
-
