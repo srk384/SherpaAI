@@ -60,6 +60,7 @@ export default function TranscriptPage() {
   const [toDelete, setToDelete] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [showShimmer, setShowShimmer] = useState(false);
+  const [testJobs, setTestJobs] = useState([]); // { id, label, status }
   const { addToast } = useToast();
   const pollingRef = useRef(false);
 
@@ -86,8 +87,9 @@ export default function TranscriptPage() {
     setShowShimmer(true);
 
     try {
-      // Capture baseline from current state to avoid an extra fetch
-      const baselineTopId = (items && items.length > 0) ? items[0]?.id : null;
+      // const baselineTopId = (items && items.length > 0) ? items[0]?.id : null;
+      // Strict matching only: avoid resolving early on top-of-feed change
+      const baselineTopId = null;
 
       // Create job
       const res = await fetch(`${BACKEND_URL}/api/v1/transcripts/jobs`, {
@@ -95,11 +97,11 @@ export default function TranscriptPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      
+
       if (!res.ok) {
         throw new Error("Failed to create job");
       }
-      
+
       const data = await res.json();
       pollingRef.current = true;
 
@@ -137,6 +139,71 @@ export default function TranscriptPage() {
       setLoading(false);
       addToast({ title: "Failed to submit. Please try again.", variant: "error" });
     }
+  }
+
+  async function runFiveConcurrent() {
+    if (loading || pollingRef.current) return;
+    if (!form.name || !form.company || !form.attendees || !form.date || !form.transcript) {
+      addToast({ title: "Fill the form first", description: "Provide inputs to clone for test jobs.", variant: "warning" });
+      return;
+    }
+    setShowShimmer(true);
+    // const baselineTopId = (items && items.length > 0) ? items[0]?.id : null;
+    // Strict matching only for concurrent tests
+    const baselineTopId = null;
+    const jobs = Array.from({ length: 5 }).map((_, i) => ({ id: `${Date.now()}-${i + 1}`, label: `Job #${i + 1}`, status: "Pending" }));
+    setTestJobs(jobs);
+
+    const payloads = jobs.map((j, idx) => ({
+      ...form,
+      name: `${(form.name || "").trim()} [Test ${idx + 1}]`,
+    }));
+
+    // Fire 5 requests simultaneously
+    const requests = payloads.map((p, idx) => (async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/v1/transcripts/jobs`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(p),
+        });
+        if (!res.ok) throw new Error("Failed to create job");
+        // Mark as Processing once enqueued
+        setTestJobs((arr) => arr.map((it, i) => i === idx ? { ...it, status: "Processing" } : it));
+
+        // Start polling for this specific job completion
+        const matcher = (it) => {
+          const inp = it?.input || {};
+          const sameCompany = (inp.company || "").trim() === (p.company || "").trim();
+          const sameName = (inp.name || "").trim() === (p.name || "").trim();
+          const sameDate = (inp.date || "").trim() === (p.date || "").trim();
+          return sameCompany && sameName && sameDate;
+        };
+
+        await new Promise((resolve, reject) => {
+          pollFeedForNewItem(
+            baselineTopId,
+            matcher,
+            async (newItems) => {
+              setItems(newItems);
+              setTestJobs((arr) => arr.map((it, i) => i === idx ? { ...it, status: "Completed" } : it));
+              addToast({ title: "Transcript job completed", description: `Job #${idx + 1}`, variant: "success" });
+              setForm({ name: "", attendees: "", date: "", company: "", transcript: "" });
+              resolve();
+            },
+            (err) => {
+              // timeout: keep as Processing; resolve to allow other jobs to proceed
+              resolve();
+            }
+          );
+        });
+      } catch (e) {
+        setTestJobs((arr) => arr.map((it, i) => i === idx ? { ...it, status: "Failed" } : it));
+      }
+    })());
+
+    await Promise.allSettled(requests);
+    setShowShimmer(false);
   }
 
   return (
@@ -208,12 +275,35 @@ export default function TranscriptPage() {
           <Button type="submit" loading={loading} disabled={loading}>
             {loading ? "Analyzing" : "Analyze & Save"}
           </Button>
+          <Button type="button" variant="secondary" onClick={runFiveConcurrent} disabled={loading}>
+            Run 5 concurrent tests
+          </Button>
         </div>
       </form>
 
       <Separator />
       <h2 className="mb-3 text-lg font-medium">Feed</h2>
-      
+
+      {testJobs.length > 0 && (
+        <div className="mb-4 rounded-md border border-zinc-200 dark:border-zinc-800 p-3">
+          <div className="mb-2 text-sm font-medium">Test jobs status</div>
+          <ul className="space-y-1">
+            {testJobs.map((j) => (
+              <li key={j.id} className="flex items-center justify-between text-sm">
+                <span>{j.label}</span>
+                <span className={
+                  j.status === "Completed" ? "text-emerald-600" :
+                    j.status === "Processing" ? "text-blue-600" :
+                      j.status === "Failed" ? "text-red-600" : "text-zinc-600"
+                }>
+                  {j.status}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Show shimmer card while job is processing */}
       {showShimmer && (
         <div className="mb-4">
