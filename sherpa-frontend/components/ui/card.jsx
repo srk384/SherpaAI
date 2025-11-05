@@ -5,7 +5,7 @@ export function Card({ className, ...props }) {
   return (
     <div
       className={cn(
-        "rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950",
+        "rounded-2xl border border-zinc-200 bg-white p-6 shadow-md hover:shadow-lg transition-shadow dark:border-zinc-800 dark:bg-zinc-950",
         className
       )}
       {...props}
@@ -14,14 +14,14 @@ export function Card({ className, ...props }) {
 }
 
 export function CardHeader({ className, ...props }) {
-  return <div className={cn("mb-2", className)} {...props} />;
+  return <div className={cn("mb-3", className)} {...props} />;
 }
 
 export function CardTitle({ className, ...props }) {
-  return <h3 className={cn("text-base font-semibold", className)} {...props} />;
+  return <h3 className={cn("text-lg font-bold", className)} {...props} />;
 }
 
 export function CardContent({ className, ...props }) {
-  return <div className={cn("text-sm", className)} {...props} />;
+  return <div className={cn("text-sm leading-relaxed", className)} {...props} />;
 }
 

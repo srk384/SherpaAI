@@ -207,26 +207,30 @@ export default function TranscriptPage() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-10">
-      <h1 className="text-2xl font-semibold">Transcript Insight</h1>
-      <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-        Paste a transcript with meeting metadata. Insights will appear below.
-      </p>
+    <main className="mx-auto max-w-5xl px-6 py-12">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold bg-gradient-to-r from-zinc-900 to-zinc-600 dark:from-zinc-100 dark:to-zinc-400 bg-clip-text text-transparent">
+          Transcript Insight
+        </h1>
+        <p className="mt-2 text-base text-zinc-600 dark:text-zinc-400">
+          Paste a transcript with meeting metadata. AI will analyze and provide actionable insights.
+        </p>
+      </div>
 
-      <form onSubmit={onSubmit} className="mt-6 space-y-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
+      <form onSubmit={onSubmit} className="mt-8 space-y-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-6 shadow-sm">
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div className="space-y-2">
             <Label htmlFor="name">Your name</Label>
             <Input
               id="name"
               name="name"
               value={form.name}
               onChange={onChange}
-              placeholder="Alex"
+              placeholder="Alex Johnson"
               required
             />
           </div>
-          <div>
+          <div className="space-y-2">
             <Label htmlFor="company">Company</Label>
             <Input
               id="company"
@@ -237,7 +241,7 @@ export default function TranscriptPage() {
               required
             />
           </div>
-          <div>
+          <div className="space-y-2">
             <Label htmlFor="attendees">Attendees</Label>
             <Input
               id="attendees"
@@ -248,7 +252,7 @@ export default function TranscriptPage() {
               required
             />
           </div>
-          <div>
+          <div className="space-y-2">
             <Label htmlFor="date">Date</Label>
             <Input
               id="date"
@@ -260,7 +264,7 @@ export default function TranscriptPage() {
             />
           </div>
         </div>
-        <div>
+        <div className="space-y-2">
           <Label htmlFor="transcript">Transcript</Label>
           <Textarea
             id="transcript"
@@ -271,43 +275,67 @@ export default function TranscriptPage() {
             required
           />
         </div>
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-3 pt-2">
           <Button type="submit" loading={loading} disabled={loading}>
-            {loading ? "Analyzing" : "Analyze & Save"}
+            {loading ? "Analyzing..." : "Analyze & Save"}
           </Button>
-          <Button type="button" variant="secondary" onClick={runFiveConcurrent} disabled={loading}>
-            Run 5 concurrent tests
+          <Button type="button" variant="outline" onClick={runFiveConcurrent} disabled={loading}>
+            Run 5 Tests
           </Button>
         </div>
       </form>
 
       <Separator />
-      <h2 className="mb-3 text-lg font-medium">Feed</h2>
+
+      <div className="mb-6">
+        <h2 className="text-2xl font-semibold">Results</h2>
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          Your analyzed transcripts will appear below
+        </p>
+      </div>
 
       {testJobs.length > 0 && (
-        <div className="mb-4 rounded-md border border-zinc-200 dark:border-zinc-800 p-3">
-          <div className="mb-2 text-sm font-medium">Test jobs status</div>
-          <ul className="space-y-1">
+        <div className="mb-6 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/50 p-4 animate-slide-up">
+          <div className="mb-3 flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></div>
+            <div className="text-sm font-semibold text-blue-900 dark:text-blue-100">Concurrent Test Jobs</div>
+          </div>
+          <div className="space-y-2">
             {testJobs.map((j) => (
-              <li key={j.id} className="flex items-center justify-between text-sm">
-                <span>{j.label}</span>
-                <span className={
-                  j.status === "Completed" ? "text-emerald-600" :
-                    j.status === "Processing" ? "text-blue-600" :
-                      j.status === "Failed" ? "text-red-600" : "text-zinc-600"
-                }>
-                  {j.status}
-                </span>
-              </li>
+              <div key={j.id} className="flex items-center justify-between rounded-lg bg-white dark:bg-zinc-900 px-3 py-2 text-sm">
+                <span className="font-medium text-zinc-700 dark:text-zinc-300">{j.label}</span>
+                <div className="flex items-center gap-2">
+                  {j.status === "Processing" && (
+                    <div className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse"></div>
+                  )}
+                  {j.status === "Completed" && (
+                    <svg className="h-4 w-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                  {j.status === "Failed" && (
+                    <svg className="h-4 w-4 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  )}
+                  <span className={
+                    j.status === "Completed" ? "text-emerald-600 dark:text-emerald-400 font-medium" :
+                      j.status === "Processing" ? "text-blue-600 dark:text-blue-400 font-medium" :
+                        j.status === "Failed" ? "text-red-600 dark:text-red-400 font-medium" :
+                        "text-zinc-500 dark:text-zinc-500"
+                  }>
+                    {j.status}
+                  </span>
+                </div>
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
       )}
 
-      {/* Show shimmer card while job is processing */}
       {showShimmer && (
-        <div className="mb-4">
-          <ShimmerCard />
+        <div className="mb-6 animate-slide-up">
+          <ShimmerCard status={loading ? "processing" : "queued"} />
         </div>
       )}
       

@@ -181,50 +181,53 @@ export default function IcebreakerPage() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-10">
-      <h1 className="text-2xl font-semibold">LinkedIn Icebreaker</h1>
-      <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-        Paste a LinkedIn bio and add a pitch deck (paste or upload). Results
-        will appear below.
-      </p>
+    <main className="mx-auto max-w-5xl px-6 py-12">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold bg-gradient-to-r from-zinc-900 to-zinc-600 dark:from-zinc-100 dark:to-zinc-400 bg-clip-text text-transparent">
+          LinkedIn Icebreaker
+        </h1>
+        <p className="mt-2 text-base text-zinc-600 dark:text-zinc-400">
+          Generate personalized outreach messages using LinkedIn profiles and pitch decks.
+        </p>
+      </div>
 
-      <form onSubmit={onSubmit} className="mt-6 space-y-4">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div>
+      <form onSubmit={onSubmit} className="mt-8 space-y-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-6 shadow-sm">
+        <div className="grid gap-5 sm:grid-cols-3">
+          <div className="space-y-2">
             <Label htmlFor="person">Name</Label>
             <Input
               id="person"
               name="person"
               value={form.person}
               onChange={onChange}
-              placeholder="e.g., Priya Sharma"
+              placeholder="Priya Sharma"
               required
             />
           </div>
-          <div>
+          <div className="space-y-2">
             <Label htmlFor="role">Role</Label>
             <Input
               id="role"
               name="role"
               value={form.role}
               onChange={onChange}
-              placeholder="e.g., Head of Sales"
+              placeholder="Head of Sales"
               required
             />
           </div>
-          <div>
+          <div className="space-y-2">
             <Label htmlFor="company">Company</Label>
             <Input
               id="company"
               name="company"
               value={form.company}
               onChange={onChange}
-              placeholder="e.g., Acme Inc."
+              placeholder="Acme Inc."
               required
             />
           </div>
         </div>
-        <div>
+        <div className="space-y-2">
           <Label htmlFor="bio">LinkedIn Bio / About</Label>
           <Textarea
             id="bio"
@@ -235,12 +238,13 @@ export default function IcebreakerPage() {
             required
           />
         </div>
-        <div>
+        <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label htmlFor="deckText">Pitch Deck</Label>
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
+              size="sm"
               onClick={() => setOpen(true)}
             >
               Upload or Paste
@@ -259,20 +263,25 @@ export default function IcebreakerPage() {
             </p>
           ) : null}
         </div>
-        <div className="flex justify-end gap-2">
+        <div className="flex justify-end gap-3 pt-2">
           <Button type="submit" loading={loading} disabled={loading}>
-            {loading ? "Generating" : "Generate & Save"}
+            {loading ? "Generating..." : "Generate & Save"}
           </Button>
         </div>
       </form>
 
       <Separator />
-      <h2 className="mb-3 text-lg font-medium">Feed</h2>
-      
-      {/* Show shimmer card while job is processing */}
+
+      <div className="mb-6">
+        <h2 className="text-2xl font-semibold">Results</h2>
+        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+          Your generated icebreakers will appear below
+        </p>
+      </div>
+
       {showShimmer && (
-        <div className="mb-4">
-          <ShimmerCard />
+        <div className="mb-6 animate-slide-up">
+          <ShimmerCard status={loading ? "processing" : "queued"} />
         </div>
       )}
       

@@ -21,12 +21,14 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <header className="sticky top-0 z-100 border-b border-zinc-200 bg-white/70 backdrop-blur supports-backdrop-filter:bg-white/60 dark:border-zinc-800 dark:bg-zinc-950/70">
-          <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
-            <a href="/" className="font-medium">SherpaAI</a>
-            <nav className="flex items-center gap-4 text-sm">
-              <a className="hover:underline" href="/transcript">Transcript</a>
-              <a className="hover:underline" href="/icebreaker">Icebreaker</a>
+        <header className="sticky top-0 z-50 border-b border-zinc-200 bg-white/80 backdrop-blur-xl dark:border-zinc-800 dark:bg-zinc-950/80">
+          <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
+            <a href="/" className="text-xl font-bold bg-gradient-to-r from-zinc-900 to-zinc-600 dark:from-zinc-100 dark:to-zinc-400 bg-clip-text text-transparent">
+              SherpaAI
+            </a>
+            <nav className="flex items-center gap-6 text-sm font-medium">
+              <a className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors" href="/transcript">Transcript</a>
+              <a className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors" href="/icebreaker">Icebreaker</a>
             </nav>
           </div>
         </header>
