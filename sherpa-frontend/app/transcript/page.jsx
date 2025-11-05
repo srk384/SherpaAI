@@ -88,7 +88,7 @@ export default function TranscriptPage() {
 
     try {
       // const baselineTopId = (items && items.length > 0) ? items[0]?.id : null;
-      // Strict matching only: avoid resolving early on top-of-feed change
+      // Strict matching only: avoid resolving early on top-of-feed change 
       const baselineTopId = null;
 
       // Create job
