@@ -2,7 +2,7 @@
 import { cn } from "@/lib/utils";
 
 export default function Textarea({ className, ...props }) {
-  const base = "min-h-[160px] w-full rounded-lg border border-zinc-300 bg-white px-4 py-3 text-sm transition-all placeholder:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 focus-visible:border-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:focus-visible:ring-blue-400/20 dark:focus-visible:border-blue-400";
+  const base = "min-h-[120px] w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-950/10 dark:border-zinc-700 dark:bg-zinc-900 dark:ring-offset-zinc-950 dark:focus-visible:ring-zinc-50/20";
   return <textarea className={cn(base, className)} {...props} />;
 }
 
