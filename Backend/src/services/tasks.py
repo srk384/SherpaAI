@@ -45,7 +45,7 @@ async def process_transcript(payload: Dict[str, Any]) -> Dict[str, Any]:
         HTTPException: If LLM call fails after 3 retries or unexpected response format
     """
     # Artificial delay to simulate heavy processing and test queue behavior
-    await asyncio.sleep(60)
+    await asyncio.sleep(1)
     
     # Extract and normalize metadata from payload
     name = (payload.get("name") or "").strip()
